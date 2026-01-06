@@ -2,7 +2,10 @@ import requests
 from bs4 import BeautifulSoup
 import time
 
-url = "https://www.amazon.es/s?k=xiaomi+poco"
+#le puse para que busque productos y asii se modifica la url.
+producto = input("ingresa el producto que deseas buscar en Amazon y presiona Enter: ")
+
+url = f"https://www.amazon.es/s?k={producto.replace(' ', '+')}"
 
 headers = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
