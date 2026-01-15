@@ -13,10 +13,13 @@ url = f"https://www.amazon.es/s?k={producto.replace(' ', '+')}"
 option = Options()
 option.add_argument('--start-maximized')
 option.add_argument('--disable-blink-features=AutomationControlled')
+option.add_argument('--headless=new')
+option.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
 
 # Driver:
 driver = webdriver.Chrome(
-    service = Service(ChromeDriverManager().install())
+    service = Service(ChromeDriverManager().install()),
+    options= option
 )
 
 # Guardar Datos
