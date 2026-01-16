@@ -18,15 +18,11 @@ def get_db_connection():
         )
         return conn
     except Exception as e:
-        print(f"❌ Error conectando a Postgres: {e}")
+        print(f"Error de conexion BD: {e}")
         return None
 
 def guardar_datos(lista):
-    """
-    Recibe la lista completa, abre UNA conexión y guarda todo.
-    """
     if not lista:
-        print("⚠️ La lista está vacía.")
         return 0
 
     conn = get_db_connection()
@@ -38,9 +34,8 @@ def guardar_datos(lista):
     
     try:
         cur = conn.cursor()
-        print(f"💾 Iniciando guardado de {len(lista)} productos...")
 
-        # 1. SQL para el PRODUCTO (Aquí nos aseguramos de guardar la URL)
+        # SQL Producto
         sql_producto = """
             INSERT INTO Productos_Vigilados (nombre, url_amazon, imagen_url)
             VALUES (%s, %s, %s)
@@ -48,7 +43,7 @@ def guardar_datos(lista):
             RETURNING id_producto;
         """
         
-        # 2. SQL para el HISTORIAL DE PRECIO
+        # SQL Precio
         sql_precio = """
             INSERT INTO Info_Product (id_producto, precio)
             VALUES (%s, %s);
@@ -56,41 +51,30 @@ def guardar_datos(lista):
 
         for prod in lista:
             try:
-                # --- PASO A: Limpieza y Conversión de Precio ---
-                # Esto es vital: Convertimos "1.200,50" a "1200.50" (formato numérico)
-                # Incluso si main.py ya lo hizo, esto es un seguro de vida.
+                # Limpieza de precio
                 precio_str = str(prod['precio']).replace('€', '').strip()
-                # Si viene con coma decimal, la cambiamos a punto para Python
                 if ',' in precio_str and precio_str.count('.') == 0:
                      precio_str = precio_str.replace(',', '.')
                 
                 precio_final = float(precio_str)
 
-                # --- PASO B: Inserción en Base de Datos ---
-                
-                # 1. Insertamos el producto (Título, URL, Imagen)
-                # IMPORTANTE: prod['url'] debe venir del main.py
+                # Insercion
                 cur.execute(sql_producto, (prod['titulo'], prod['url'], prod['imagen']))
-                
-                # Obtenemos el ID que Postgres le asignó
                 id_generado = cur.fetchone()[0]
-
-                # 2. Insertamos el precio vinculado a ese ID
                 cur.execute(sql_precio, (id_generado, precio_final))
                 
                 guardados += 1
-                # print(f"   ↳ OK: {prod['titulo'][:15]}... ({precio_final}€)")
             
             except ValueError:
-                print(f"   ❌ Error de formato de precio en: {prod['titulo'][:10]}...")
+                print(f"Error formato precio: {prod['titulo'][:20]}")
             except Exception as e_item:
-                print(f"   ❌ Error guardando ítem: {e_item}")
+                print(f"Error guardando item: {e_item}")
 
-        conn.commit() # Confirmamos todos los cambios al final
-        print(f"🏁 Transacción completada. Total guardados: {guardados}")
+        conn.commit()
+        print(f"Items guardados: {guardados}")
 
     except Exception as e:
-        print(f"❌ Error General de BD: {e}")
+        print(f"Error Transaccion: {e}")
         if conn: conn.rollback()
     
     finally:
