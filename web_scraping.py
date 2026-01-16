@@ -1,90 +1,263 @@
+import customtkinter as ctk
+import threading
 from bs4 import BeautifulSoup
 import time
+import requests
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from webdriver_manager.chrome import ChromeDriverManager
-from database import connection
 
-# 1 - Pedir Producto
-producto = input("ingresa el producto que deseas buscar en Amazon y presiona Enter: ")
-url = f"https://www.amazon.es/s?k={producto.replace(' ', '+')}"
-
-option = Options()
-option.add_argument('--start-maximized')
-option.add_argument('--disable-blink-features=AutomationControlled')
-option.add_argument('--headless=new')
-option.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-
-# Driver:
-driver = webdriver.Chrome(
-    service = Service(ChromeDriverManager().install()),
-    options= option
-)
-
-# Guardar Datos
-Lista_Info = []
+# --- IMPORTACIÓN BD ---
 try:
-    # Abrir pagina:
-    driver.get(url)
-    time.sleep(4)
+    from conexion import guardar_datos
+except ImportError:
+    def guardar_datos(lista): return 0
 
-    # Renderizar HTML:
-    html = driver.page_source
+# --- AGREGA A QUI LOS TOKENS DEL TELEGRAM ÑAÑO  ---
 
-    # Mirar Precios:
-    sopa = BeautifulSoup(html, 'html.parser')
-    resultados = sopa.find_all('div', {'data-component-type': 's-search-result'})
-    print(f'Encontrados: {len(resultados)}')
 
-    # Mapeo de Datos de la pagina web para la Base de Datos
-    for i,item in enumerate(resultados[:10]):
-        titulo_tag = item.find('h2')
-        precio_entero = item.find('span', class_ = 'a-price-whole')
-        precio_decimal = item.find('span', class_ = 'a-price-fraction')
-        img_tag = item.find('img', class_ = 's-image')
-        url_img = img_tag['src'] if img_tag else None
-        link_tag = item.find('a', class_='a-link-normal')
+# --- CONFIGURACIÓN VISUAL ---
+ctk.set_appearance_mode("Light")
+ctk.set_default_color_theme("green")
 
-        if titulo_tag and precio_entero:
-            titulo = img_tag['alt'] if img_tag else titulo_tag.text.strip()
+class App(ctk.CTk):
+    def __init__(self):
+        super().__init__()
+        self.title("Amazon Scraper Clean")
+        self.geometry("750x850")
+        self.configure(fg_color="#F0F3F5") 
 
-            # Limpieza de Datos
-            # Conversion de puntos a comas
-            p_ent = precio_entero.text.replace('.','').replace(',','').strip()
-            p_dec = precio_decimal.text.strip() if precio_decimal else '00'
-            precio_final = f"{p_ent}.{p_dec}"
+        # === 1. FUENTES MÁS GRANDES Y ROBUSTAS ===
+        # Título muy grande
+        self.FONT_TITLE = ("Segoe UI", 32, "bold") 
+        # Texto general más "robusto" (Bold)
+        self.FONT_BODY = ("Segoe UI", 13, "bold")  
+        # Botones importantes
+        self.FONT_BUTTON = ("Segoe UI", 14, "bold") 
 
-            # Conversion URL a Texto:
-            url_img_txt = img_tag['src'] if img_tag else 'Sin Imagen'
-            url_producto_txt = "https://www.amazon.es" + link_tag['href'] if link_tag else "Sin URL"
-
-            # Print de los resultados de las paginas:
-            print(f'[{i}] {titulo}... | {precio_final} €')
-
-            # Informacion agregada a la lista.
-            Lista_Info.append({
-                'titulo': titulo, 
-                'precio': precio_final, 
-                'url': url_producto_txt,
-                'imagen': url_img_txt
-
-            })
-
+        # Colores
+        self.VERDE_PRINCIPAL = "#2CC985"
+        self.VERDE_HOVER = "#24A36B"
+        self.ROJO_DESMARCAR = "#FF5555"
+        self.GRIS_BOTON = "#555555"
         
+        # Estado del botón de selección (Empieza desmarcado)
+        self.todos_seleccionados = False
 
-except Exception as e:
-    print(f"Error técnico: {e}")
+        # === TARJETA PRINCIPAL ===
+        self.main_card = ctk.CTkFrame(
+            self, fg_color="white", corner_radius=50, border_width=0
+        )
+        self.main_card.pack(pady=30, padx=30, fill="both", expand=True)
 
-finally:
-    driver.quit()
+        # Título
+        self.label = ctk.CTkLabel(
+            self.main_card, 
+            text="Amazon Scraper", 
+            font=self.FONT_TITLE, # <--- Fuente Gigante
+            text_color="#333333"
+        )
+        self.label.pack(pady=(40, 15))
 
-from conexion import guardar_datos
-guardar_datos(Lista_Info)
+        # Buscador
+        self.entry_producto = ctk.CTkEntry(
+            self.main_card, 
+            placeholder_text="Ej: Auriculares Bluetooth...", 
+            width=450, height=50, corner_radius=25,
+            border_color=self.VERDE_PRINCIPAL, border_width=2,
+            fg_color="#FAFAFA",
+            font=self.FONT_BODY 
+        )
+        self.entry_producto.pack(pady=10)
+        
+        # === 2. VINCULAR TECLA ENTER ===
+        # Al presionar Enter en la caja de texto, se activa la búsqueda
+        self.entry_producto.bind("<Return>", self.iniciar_busqueda)
 
-test_conn = connection()
-if test_conn:
-    print('Conexion Exitosa')
-else: print('Conexion Fallida')
+        # Botón Buscar
+        self.btn_buscar = ctk.CTkButton(
+            self.main_card, 
+            text="🔎 BUSCAR", 
+            command=self.iniciar_busqueda, 
+            fg_color=self.VERDE_PRINCIPAL, hover_color=self.VERDE_HOVER,
+            corner_radius=25, width=200, height=45,
+            font=self.FONT_BUTTON
+        )
+        self.btn_buscar.pack(pady=5)
 
+        # --- ÁREA DE HERRAMIENTAS ---
+        self.frame_tools = ctk.CTkFrame(self.main_card, fg_color="transparent")
+        self.frame_tools.pack(pady=(20, 5))
 
+        self.label_res = ctk.CTkLabel(self.frame_tools, text="Resultados:", text_color="gray", font=self.FONT_BODY)
+        self.label_res.pack(side="left", padx=10)
+
+        # === 3. BOTÓN ÚNICO (TOGGLE) ===
+        # Este botón cambiará de color y texto dinámicamente
+        self.btn_toggle = ctk.CTkButton(
+            self.frame_tools,
+            text="✅ Marcar Todos",
+            command=self.alternar_seleccion, # Llama a la función inteligente
+            width=120, height=30,
+            fg_color=self.GRIS_BOTON, 
+            hover_color="#333333",
+            corner_radius=15,
+            font=self.FONT_BODY
+        )
+        self.btn_toggle.pack(side="right", padx=10)
+
+        # Scroll Frame
+        self.scroll_frame = ctk.CTkScrollableFrame(
+            self.main_card, width=550, height=300, 
+            corner_radius=25, fg_color="#F7F9F9"
+        )
+        self.scroll_frame.pack(pady=5)
+
+        self.checkboxes_activos = [] 
+
+        # Botón Guardar
+        self.btn_guardar = ctk.CTkButton(
+            self.main_card, 
+            text="💾 GUARDAR SELECCIÓN", 
+            command=self.guardar_seleccionados, 
+            fg_color="#333333", hover_color="black",
+            state="disabled", corner_radius=25, height=45,
+            font=self.FONT_BUTTON
+        )
+        self.btn_guardar.pack(pady=10)
+
+        # Log
+        self.textbox = ctk.CTkTextbox(
+            self.main_card, width=550, height=80, corner_radius=20, 
+            fg_color="#FFFFFF", border_width=1, border_color="#EEEEEE",
+            text_color="gray", font=("Consolas", 11)
+        )
+        self.textbox.pack(pady=(10, 30))
+
+    def log(self, mensaje):
+        self.textbox.insert("end", ">> " + mensaje + "\n")
+        self.textbox.see("end")
+
+    # === LÓGICA DEL BOTÓN ÚNICO ===
+    def alternar_seleccion(self):
+        if not self.checkboxes_activos: return
+
+        # Invertimos el estado actual
+        self.todos_seleccionados = not self.todos_seleccionados
+
+        if self.todos_seleccionados:
+            # ACCIÓN: MARCAR TODO
+            for chk, _ in self.checkboxes_activos: chk.select()
+            # Cambiamos aspecto del botón
+            self.btn_toggle.configure(
+                text="❌ Desmarcar Todo", 
+                fg_color=self.ROJO_DESMARCAR, 
+                hover_color="#CC0000"
+            )
+        else:
+            # ACCIÓN: DESMARCAR TODO
+            for chk, _ in self.checkboxes_activos: chk.deselect()
+            # Restauramos aspecto del botón
+            self.btn_toggle.configure(
+                text="✅ Marcar Todos", 
+                fg_color=self.GRIS_BOTON, 
+                hover_color="#333333"
+            )
+
+    # Modificamos para aceptar el evento del ENTER (event=None)
+    def iniciar_busqueda(self, event=None):
+        for widget in self.scroll_frame.winfo_children():
+            widget.destroy()
+        
+        # Reseteamos variables
+        self.checkboxes_activos = []
+        self.todos_seleccionados = False 
+        
+        # Reseteamos el botón toggle a su estado original
+        self.btn_toggle.configure(text="✅ Marcar Todos", fg_color=self.GRIS_BOTON)
+        
+        self.btn_guardar.configure(state="disabled")
+        
+        hilo = threading.Thread(target=self.logica_scraping)
+        hilo.start()
+
+    def logica_scraping(self):
+        producto = self.entry_producto.get()
+        if not producto:
+            self.log("⚠️ Escribe algo.")
+            return
+
+        self.log(f"🌱 Buscando '{producto}'...")
+        options = Options()
+        options.add_argument('--headless')
+        options.add_argument('--log-level=3')
+        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+        
+        try:
+            url = f"https://www.amazon.es/s?k={producto.replace(' ', '+')}"
+            driver.get(url)
+            time.sleep(2)
+            soup = BeautifulSoup(driver.page_source, 'html.parser')
+            items = soup.find_all('div', {'data-component-type': 's-search-result'})
+            
+            resultados = []
+            for item in items[:10]:
+                try:
+                    h2 = item.find('h2')
+                    price = item.find('span', class_='a-price-whole')
+                    link = item.find('a', class_='a-link-normal', href=True)
+                    img = item.find('img', class_='s-image')
+
+                    if h2 and price:
+                        resultados.append({
+                            'titulo': h2.text.strip(),
+                            'precio': price.text.replace('.', '').replace(',', '.').strip(),
+                            'url': "https://amazon.es" + link['href'], 
+                            'imagen': img['src'] if img else ''
+                        })
+                except: continue
+            
+            if resultados: self.crear_checkboxes(resultados)
+            else: self.log("🍃 Nada encontrado.")
+
+        except Exception as e: self.log(f"Error: {e}")
+        finally: driver.quit()
+
+    def crear_checkboxes(self, lista):
+        for datos in lista:
+            texto = f"{datos['precio']}€  |  {datos['titulo'][:50]}..."
+            chk = ctk.CTkCheckBox(
+                self.scroll_frame, 
+                text=texto, 
+                text_color="#333333",
+                fg_color=self.VERDE_PRINCIPAL,
+                hover_color=self.VERDE_HOVER,
+                corner_radius=100,
+                font=self.FONT_BODY 
+            )
+            chk.pack(anchor="w", pady=8, padx=15)
+            self.checkboxes_activos.append((chk, datos))
+        
+        self.btn_guardar.configure(state="normal")
+        self.log("✨ Búsqueda lista.")
+
+    def guardar_seleccionados(self):
+        lista = [d for chk, d in self.checkboxes_activos if chk.get() == 1]
+        if not lista: return
+        guardar_datos(lista) 
+        self.enviar_telegram(lista)
+        self.log("✅ Guardado.")
+
+    def enviar_telegram(self, lista):
+        msg = "<b>SELECCIÓN GUARDADA</b>\n\n"
+        for p in lista:
+            msg += f"✅ {p['titulo'][:30]}...\n💰 <b>{p['precio']}€</b>\n🔗 <a href='{p['url']}'>Ver</a>\n\n"
+        try:
+            requests.post(f"https://api.telegram.org/bot{TOKEN_TELEGRAM}/sendMessage", 
+                          data={"chat_id": CHAT_ID_TELEGRAM, "text": msg, "parse_mode": "HTML"})
+        except: pass
+
+if __name__ == "__main__":
+    app = App()
+    app.mainloop()
