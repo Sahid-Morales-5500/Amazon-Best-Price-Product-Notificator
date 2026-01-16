@@ -14,7 +14,8 @@ try:
 except ImportError:
     def guardar_datos(lista): return 0
 
-# --- AGREGA A QUI LOS TOKENS DEL TELEGRAM ÑAÑO  ---
+# --- TELEGRAM (INGRESA TUS TOKENS AQUI) ---
+
 
 
 # --- CONFIGURACIÓN VISUAL ---
@@ -28,12 +29,12 @@ class App(ctk.CTk):
         self.geometry("750x850")
         self.configure(fg_color="#F0F3F5") 
 
-        # === 1. FUENTES MÁS GRANDES Y ROBUSTAS ===
-        # Título muy grande
+        # === 1. FUENTES MÁS GRANDES Y ROBUSTAS (BOLD) ===
+        # Título gigante
         self.FONT_TITLE = ("Segoe UI", 32, "bold") 
-        # Texto general más "robusto" (Bold)
+        # Texto general
         self.FONT_BODY = ("Segoe UI", 13, "bold")  
-        # Botones importantes
+        # Botones
         self.FONT_BUTTON = ("Segoe UI", 14, "bold") 
 
         # Colores
@@ -42,7 +43,7 @@ class App(ctk.CTk):
         self.ROJO_DESMARCAR = "#FF5555"
         self.GRIS_BOTON = "#555555"
         
-        # Estado del botón de selección (Empieza desmarcado)
+        # Estado del botón de selección
         self.todos_seleccionados = False
 
         # === TARJETA PRINCIPAL ===
@@ -55,7 +56,7 @@ class App(ctk.CTk):
         self.label = ctk.CTkLabel(
             self.main_card, 
             text="Amazon Scraper", 
-            font=self.FONT_TITLE, # <--- Fuente Gigante
+            font=self.FONT_TITLE, # Fuente grande
             text_color="#333333"
         )
         self.label.pack(pady=(40, 15))
@@ -71,8 +72,7 @@ class App(ctk.CTk):
         )
         self.entry_producto.pack(pady=10)
         
-        # === 2. VINCULAR TECLA ENTER ===
-        # Al presionar Enter en la caja de texto, se activa la búsqueda
+        # === 2. ACTIVAR CON TECLA ENTER ===
         self.entry_producto.bind("<Return>", self.iniciar_busqueda)
 
         # Botón Buscar
@@ -94,11 +94,10 @@ class App(ctk.CTk):
         self.label_res.pack(side="left", padx=10)
 
         # === 3. BOTÓN ÚNICO (TOGGLE) ===
-        # Este botón cambiará de color y texto dinámicamente
         self.btn_toggle = ctk.CTkButton(
             self.frame_tools,
             text="✅ Marcar Todos",
-            command=self.alternar_seleccion, # Llama a la función inteligente
+            command=self.alternar_seleccion,
             width=120, height=30,
             fg_color=self.GRIS_BOTON, 
             hover_color="#333333",
@@ -139,44 +138,29 @@ class App(ctk.CTk):
         self.textbox.insert("end", ">> " + mensaje + "\n")
         self.textbox.see("end")
 
-    # === LÓGICA DEL BOTÓN ÚNICO ===
+    # === LÓGICA INTELIGENTE DEL BOTÓN ===
     def alternar_seleccion(self):
         if not self.checkboxes_activos: return
 
-        # Invertimos el estado actual
         self.todos_seleccionados = not self.todos_seleccionados
 
         if self.todos_seleccionados:
-            # ACCIÓN: MARCAR TODO
+            # Marcar todo
             for chk, _ in self.checkboxes_activos: chk.select()
-            # Cambiamos aspecto del botón
-            self.btn_toggle.configure(
-                text="❌ Desmarcar Todo", 
-                fg_color=self.ROJO_DESMARCAR, 
-                hover_color="#CC0000"
-            )
+            self.btn_toggle.configure(text="❌ Desmarcar Todo", fg_color=self.ROJO_DESMARCAR, hover_color="#CC0000")
         else:
-            # ACCIÓN: DESMARCAR TODO
+            # Desmarcar todo
             for chk, _ in self.checkboxes_activos: chk.deselect()
-            # Restauramos aspecto del botón
-            self.btn_toggle.configure(
-                text="✅ Marcar Todos", 
-                fg_color=self.GRIS_BOTON, 
-                hover_color="#333333"
-            )
+            self.btn_toggle.configure(text="✅ Marcar Todos", fg_color=self.GRIS_BOTON, hover_color="#333333")
 
-    # Modificamos para aceptar el evento del ENTER (event=None)
+    # Se añade event=None para que funcione con el Enter
     def iniciar_busqueda(self, event=None):
         for widget in self.scroll_frame.winfo_children():
             widget.destroy()
         
-        # Reseteamos variables
         self.checkboxes_activos = []
         self.todos_seleccionados = False 
-        
-        # Reseteamos el botón toggle a su estado original
         self.btn_toggle.configure(text="✅ Marcar Todos", fg_color=self.GRIS_BOTON)
-        
         self.btn_guardar.configure(state="disabled")
         
         hilo = threading.Thread(target=self.logica_scraping)
